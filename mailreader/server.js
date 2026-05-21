@@ -29,6 +29,7 @@ class SessionData {
     this.lastPollTime = null;         // timestamp
     this.lastActivity = Date.now();   // used for 60-min cleanup
     this.isPolling = false;
+    this.pollCycleDuration = 0;       // ms — tracks how long the last poll cycle took
     this.lastReceivedDates = {};      // account email -> latest receivedDateTime seen
     this.seenMessageIds = new Set();  // dedup across all accounts
     // Temporary XLSX data during column preview flow
@@ -213,7 +214,7 @@ function parseAccountsText(raw) {
   const lines = raw.split('\n').filter(l => l.trim());
   const parsed = [];
   const invalidLines = [];
-  const lineMap = []; // { email, refreshToken, clientId }
+  const lineMap = [];
 
   for (const line of lines) {
     const delim = detectDelimiter(line);
@@ -278,7 +279,6 @@ function detectColumnByValues(values) {
   if (values.length === 0) return col;
 
   const numCols = values[0].length;
-  const scored = new Set();
 
   // Score each column for email / refresh / client patterns
   for (let c = 0; c < numCols; c++) {
@@ -294,7 +294,6 @@ function detectColumnByValues(values) {
 
     const maxScore = Math.max(emailScore, refreshScore, clientScore);
     if (maxScore === 0) continue;
-    scored.add(c);
 
     if (emailScore === maxScore && col.emailIdx === -1) col.emailIdx = c;
     else if (refreshScore === maxScore && col.refreshIdx === -1) col.refreshIdx = c;
@@ -358,12 +357,13 @@ function parseXLSXRows(rows, colMap) {
 }
 
 // ---------------------------------------------------------------------------
-// Full poll cycle for a session (chunked, with progress)
+// Full poll cycle for a session (fully concurrent with semaphore)
 // ---------------------------------------------------------------------------
 async function runPollCycle(session) {
   if (session.isPolling) return; // skip overlapping ticks
   session.isPolling = true;
   session.markActive();
+  const startTime = Date.now();
 
   const activeAccounts = session.accounts.filter(a => !a.expired);
   const total = activeAccounts.length;
@@ -378,27 +378,30 @@ async function runPollCycle(session) {
   pushEvent(session, { type: 'status', message: `Fetching ${total} accounts…` });
   pushEvent(session, { type: 'progress', done: 0, total });
 
-  const CHUNK_SIZE = 25;
+  // Use a semaphore to limit concurrency globally across all batches
+  const semaphore = pLimit(25);
+  let completed = 0;
   const allEmails = [];
 
-  for (let i = 0; i < total; i += CHUNK_SIZE) {
-    const chunk = activeAccounts.slice(i, i + CHUNK_SIZE);
-    const limit = pLimit(CHUNK_SIZE);
-    const tasks = chunk.map(acc => limit(() =>
-      fetchEmails(acc, session).catch(err => {
+  // Create a task for every account immediately — semaphore enforces the concurrency limit
+  const tasks = activeAccounts.map(acc =>
+    semaphore(async () => {
+      const result = await fetchEmails(acc, session).catch(err => {
         acc.expired = true;
         acc.lastError = `Network error: ${err.message}`;
         return [];
-      })
-    ));
-    const results = await Promise.all(tasks);
-    const done = Math.min(i + CHUNK_SIZE, total);
+      });
+      completed++;
+      pushEvent(session, { type: 'progress', done: completed, total });
+      return result;
+    })
+  );
 
-    for (const emails of results) {
-      allEmails.push(...emails);
-    }
+  // Wait for all tasks to complete (they run concurrently, capped at 25)
+  const results = await Promise.all(tasks);
 
-    pushEvent(session, { type: 'progress', done, total });
+  for (const emails of results) {
+    allEmails.push(...emails);
   }
 
   // Sort newest first
@@ -417,6 +420,7 @@ async function runPollCycle(session) {
   });
 
   session.lastPollTime = new Date().toISOString();
+  session.pollCycleDuration = Date.now() - startTime;
   session.isPolling = false;
 }
 
@@ -465,7 +469,11 @@ app.post('/session/:sessionId/accounts', (req, res) => {
   if (session.sseResponse) {
     if (session.pollTimer) clearInterval(session.pollTimer);
     runPollCycle(session);
-    session.pollTimer = setInterval(() => runPollCycle(session), 30_000);
+    // Adaptive interval: poll every max(30s, lastCycleDuration + 5s)
+    session.pollTimer = setInterval(() => {
+      const interval = Math.max(30_000, session.pollCycleDuration + 5000);
+      runPollCycle(session);
+    }, 30_000);
   }
 });
 
@@ -560,7 +568,11 @@ app.post('/session/:sessionId/xlsx-confirm', (req, res) => {
   if (session.sseResponse) {
     if (session.pollTimer) clearInterval(session.pollTimer);
     runPollCycle(session);
-    session.pollTimer = setInterval(() => runPollCycle(session), 30_000);
+    // Adaptive interval: poll every max(30s, lastCycleDuration + 5s)
+    session.pollTimer = setInterval(() => {
+      const interval = Math.max(30_000, session.pollCycleDuration + 5000);
+      runPollCycle(session);
+    }, 30_000);
   }
 });
 
