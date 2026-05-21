@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MailReader</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --surface2: #222242;
+      --border: #2a2a4a;
+      --text: #e8e8f0;
+      --text-muted: #8888aa;
+      --accent: #6366f1;
+      --accent-hover: #5558e6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --orange: #f59e0b;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ---- Navbar ---- */
+    .navbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+    }
+    .navbar h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .navbar h1 span { color: var(--accent); }
+    .status-dot {
+      display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+      margin-right: 8px; transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.disconnected { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .status-label { font-size: 13px; color: var(--text-muted); }
+
+    /* ---- Layout ---- */
+    .app-layout {
+      display: flex;
+      height: calc(100vh - 56px);
+    }
+
+    /* ---- Left Panel ---- */
+    .left-panel {
+      width: 380px; min-width: 380px;
+      padding: 20px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 14px;
+      overflow-y: auto;
+    }
+    .left-panel h2 { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .left-panel textarea {
+      width: 100%; height: 220px; resize: vertical;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; 
+      color: var(--text); font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace;
+      line-height: 1.5;
+      outline: none; transition: border-color 0.2s;
+    }
+    .left-panel textarea:focus { border-color: var(--accent); }
+    .left-panel textarea::placeholder { color: var(--text-muted); }
+
+    .panel-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      padding: 10px 20px; border: none; border-radius: var(--radius);
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+    .btn-danger:hover { background: rgba(239,68,68,0.1); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    .account-count {
+      font-size: 13px; color: var(--text-muted);
+      padding: 8px 12px; background: var(--surface2);
+      border-radius: var(--radius); display: flex; align-items: center; gap: 8px;
+    }
+    .account-count strong { color: var(--text); }
+
+    /* ---- Right Panel ---- */
+    .right-panel {
+      flex: 1; padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow: hidden;
+    }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    }
+    .filter-bar input, .filter-bar select {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 14px;
+      color: var(--text); font-size: 13px; outline: none;
+    }
+    .filter-bar input:focus, .filter-bar select:focus { border-color: var(--accent); }
+    .filter-bar input { flex: 1; min-width: 180px; }
+    .filter-bar select { min-width: 140px; }
+
+    .toggle-btn {
+      padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface2); color: var(--text-muted); font-size: 13px; cursor: pointer;
+      transition: all 0.2s; font-weight: 500;
+    }
+    .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* Status bar */
+    .status-bar {
+      display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+      font-size: 13px; color: var(--text-muted);
+    }
+    .status-bar .fetching { color: var(--orange); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* Errors */
+    .errors-toggle {
+      font-size: 12px; color: var(--red); cursor: pointer;
+      background: rgba(239,68,68,0.08); padding: 4px 10px; border-radius: 6px;
+      border: none; color: var(--red);
+    }
+    .errors-list { font-size: 12px; color: var(--red); max-height: 80px; overflow-y: auto; }
+    .errors-list div { padding: 3px 0; border-bottom: 1px solid rgba(239,68,68,0.1); }
+
+    /* Email feed */
+    .email-feed {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 10px;
+      padding-right: 4px;
+    }
+    .email-feed::-webkit-scrollbar { width: 6px; }
+    .email-feed::-webkit-scrollbar-track { background: transparent; }
+    .email-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .email-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      transition: border-color 0.2s, transform 0.15s;
+      animation: slideIn 0.25s ease-out;
+    }
+    .email-card:hover { border-color: var(--accent); transform: translateX(2px); }
+    .email-card.is-new { border-left: 3px solid var(--green); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .email-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+    .email-account {
+      display: inline-block; font-size: 12px; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px;
+      background: rgba(99,102,241,0.15); color: #a5b4fc;
+    }
+    .email-badges { display: flex; gap: 6px; align-items: center; }
+    .badge-new {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      background: var(--green); color: #fff; padding: 2px 8px; border-radius: 10px;
+      letter-spacing: 0.3px;
+    }
+    .email-time { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+    .email-from { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; }
+    .email-subject { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .email-preview { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+    .email-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .email-actions .btn { font-size: 11px; padding: 4px 10px; }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; color: var(--text-muted); gap: 12px; text-align: center;
+    }
+    .empty-state svg { opacity: 0.3; }
+    .empty-state p { font-size: 14px; max-width: 300px; }
+
+    /* Toast */
+    .toast-container {
+      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 18px; font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      animation: toastIn 0.2s ease-out;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } }
+    .toast.info { border-left: 3px solid var(--accent); }
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error { border-left: 3px solid var(--red); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .app-layout { flex-direction: column; }
+      .left-panel { width: 100%; min-width: unset; height: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+      .right-panel { height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <h1><span>Mail</span>Reader</h1>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="status-dot disconnected" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">Disconnected</span>
+    </div>
+  </nav>
+
+  <!-- Layout -->
+  <div class="app-layout">
+    <!-- Left Panel -->
+    <div class="left-panel">
+      <h2>Accounts</h2>
+      <textarea id="accountsInput" placeholder="Paste accounts here (one per line):&#10;email|password|refresh_token|client_id&#10;email|password|refresh_token|client_id"></textarea>
+      <div class="panel-actions">
+        <button class="btn btn-primary" id="startBtn">▶ Start Monitoring</button>
+        <button class="btn btn-secondary btn-sm" id="clearBtn">Clear</button>
+      </div>
+      <div class="account-count">
+        <span>📧</span>
+        <span><strong id="accountCount">0</strong> account(s) loaded</span>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="Search subject, preview, account…" />
+        <select id="accountFilter">
+          <option value="">All accounts</option>
+        </select>
+        <button class="toggle-btn active" id="showToggle">Show All</button>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span>⏱ Last poll: <span id="lastPoll">—</span></span>
+        <span id="pollStatus"></span>
+        <span id="emailCount" style="color:var(--text-muted)">0 emails</span>
+        <button class="errors-toggle" id="errorsToggle" style="display:none;" onclick="toggleErrors()">
+          ⚠ <span id="errorCount">0</span> error(s)
+        </button>
+      </div>
+      <div class="errors-list" id="errorsList" style="display:none;"></div>
+
+      <!-- Feed -->
+      <div class="email-feed" id="emailFeed">
+        <div class="empty-state" id="emptyState">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+          <p>Paste your accounts in the left panel and click <strong>Start Monitoring</strong> to begin receiving emails.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    let sessionId = null;
+    let eventSource = null;
+    let allEmails = [];          // newest first
+    let accountErrors = [];
+    let isMonitoring = false;
+
+    const MAX_EMAILS = 200;
+
+    // DOM refs
+    const $ = id => document.getElementById(id);
+    const feed = $('emailFeed');
+    const emptyState = $('emptyState');
+    const statusDot = $('statusDot');
+    const statusLabel = $('statusLabel');
+    const lastPollEl = $('lastPoll');
+    const pollStatusEl = $('pollStatus');
+    const emailCountEl = $('emailCount');
+    const accountCountEl = $('accountCount');
+    const errorsToggle = $('errorsToggle');
+    const errorCountEl = $('errorCount');
+    const errorsList = $('errorsList');
+    const startBtn = $('startBtn');
+    const clearBtn = $('clearBtn');
+    const accountsInput = $('accountsInput');
+    const searchInput = $('searchInput');
+    const accountFilter = $('accountFilter');
+    const showToggle = $('showToggle');
+
+    // -----------------------------------------------------------------------
+    // Toast
+    // -----------------------------------------------------------------------
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      $('toastContainer').appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Session management
+    // -----------------------------------------------------------------------
+    async function createSession() {
+      try {
+        const res = await fetch('/session', { method: 'POST' });
+        const data = await res.json();
+        sessionId = data.sessionId;
+        return sessionId;
+      } catch (e) {
+        toast('Failed to create session', 'error');
+        return null;
+      }
+    }
+
+    function deleteSession() {
+      if (sessionId) {
+        navigator.sendBeacon(`/session/${sessionId}`, '{}');
+      }
+    }
+
+    // Cleanup on tab close
+    window.addEventListener('beforeunload', deleteSession);
+
+    // -----------------------------------------------------------------------
+    // SSE connection
+    // -----------------------------------------------------------------------
+    function connectSSE() {
+      if (!sessionId) return;
+      if (eventSource) eventSource.close();
+
+      eventSource = new EventSource(`/stream/${sessionId}`);
+
+      eventSource.onopen = () => {
+        statusDot.className = 'status-dot connected';
+        statusLabel.textContent = 'Connected';
+      };
+
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          handleSSEData(data);
+        } catch (_) {}
+      };
+
+      eventSource.onerror = () => {
+        statusDot.className = 'status-dot disconnected';
+        statusLabel.textContent = 'Disconnected — reconnecting in 5s…';
+        eventSource.close();
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // SSE data handler
+    // -----------------------------------------------------------------------
+    function handleSSEData(data) {
+      switch (data.type) {
+        case 'emails':
+          for (const email of data.emails) {
+            // Don't add duplicates
+            if (allEmails.some(e => e.id === email.id)) continue;
+            allEmails.unshift(email);
+          }
+          // Sort newest first
+          allEmails.sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+          // Cap at MAX_EMAILS
+          if (allEmails.length > MAX_EMAILS) allEmails.length = MAX_EMAILS;
+          renderFeed();
+          break;
+
+        case 'status':
+          if (data.message.startsWith('Fetching')) {
+            pollStatusEl.innerHTML = `<span class="fetching">${data.message}</span>`;
+          } else {
+            pollStatusEl.textContent = '';
+            lastPollEl.textContent = new Date().toLocaleTimeString();
+          }
+          toast(data.message, 'success');
+          break;
+
+        case 'error':
+          accountErrors.push(data);
+          renderErrors();
+          toast(`${data.account}: ${data.message.substring(0, 60)}…`, 'error');
+          break;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Start monitoring
+    // -----------------------------------------------------------------------
+    async function startMonitoring() {
+      const raw = accountsInput.value.trim();
+      if (!raw) { toast('Paste account lines first', 'error'); return; }
+
+      if (!sessionId) {
+        const sid = await createSession();
+        if (!sid) return;
+        connectSSE();
+      }
+
+      try {
+        const res = await fetch(`/session/${sessionId}/accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accounts: raw }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          toast(`Error: ${err}`, 'error');
+          return;
+        }
+        const data = await res.json();
+        accountCountEl.textContent = data.count;
+        isMonitoring = true;
+        startBtn.textContent = '▶ Monitoring…';
+        startBtn.disabled = true;
+        toast(`Monitoring ${data.count} accounts`, 'success');
+
+        // Connect SSE if not already connected
+        if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+          connectSSE();
+        }
+      } catch (e) {
+        toast(`Failed: ${e.message}`, 'error');
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Clear
+    // -----------------------------------------------------------------------
+    function clearAll() {
+      accountsInput.value = '';
+      allEmails = [];
+      accountErrors = [];
+      if (sessionId) {
+        fetch(`/session/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+        if (eventSource) { eventSource.close(); eventSource = null; }
+        sessionId = null;
+      }
+      isMonitoring = false;
+      startBtn.textContent = '▶ Start Monitoring';
+      startBtn.disabled = false;
+      accountCountEl.textContent = '0';
+      lastPollEl.textContent = '—';
+      pollStatusEl.textContent = '';
+      accountFilter.innerHTML = '<option value="">All accounts</option>';
+      renderFeed();
+      renderErrors();
+      toast('Cleared', 'info');
+    }
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
+    function renderFeed() {
+      const query = searchInput.value.toLowerCase().trim();
+      const accountFilterVal = accountFilter.value;
+      const showNewOnly = showToggle.classList.contains('active');
+
+      let filtered = allEmails;
+
+      if (query) {
+        filtered = filtered.filter(e =>
+          e.subject.toLowerCase().includes(query) ||
+          e.preview.toLowerCase().includes(query) ||
+          e.account.toLowerCase().includes(query) ||
+          e.from.toLowerCase().includes(query)
+        );
+      }
+
+      if (accountFilterVal) {
+        filtered = filtered.filter(e => e.account === accountFilterVal);
+      }
+
+      if (showNewOnly) {
+        filtered = filtered.filter(e => e.isNew);
+      }
+
+      emailCountEl.textContent = `${filtered.length} email${filtered.length !== 1 ? 's' : ''}`;
+
+      // Hide existing cards, show empty or render
+      emptyState.style.display = filtered.length === 0 ? 'flex' : 'none';
+
+      // Remove all cards
+      const cards = feed.querySelectorAll('.email-card');
+      cards.forEach(c => c.remove());
+
+      for (const email of filtered) {
+        feed.appendChild(createEmailCard(email));
+      }
+
+      // Update account filter options
+      const accounts = [...new Set(allEmails.map(e => e.account))];
+      const currentVal = accountFilter.value;
+      accountFilter.innerHTML = '<option value="">All accounts</option>';
+      for (const acc of accounts) {
+        const opt = document.createElement('option');
+        opt.value = acc;
+        opt.textContent = acc;
+        if (acc === currentVal) opt.selected = true;
+        accountFilter.appendChild(opt);
+      }
+    }
+
+    function createEmailCard(email) {
+      const card = document.createElement('div');
+      card.className = `email-card${email.isNew ? ' is-new' : ''}`;
+
+      // Relative time
+      const relTime = timeAgo(email.receivedAt);
+
+      // Detect OTP
+      const otp = detectOTP(email.subject + ' ' + email.preview);
+
+      card.innerHTML = `
+        <div class="email-header">
+          <span class="email-account">${escapeHtml(email.account)}</span>
+          <div class="email-badges">
+            ${email.isNew ? '<span class="badge-new">NEW</span>' : ''}
+            <span class="email-time">${relTime}</span>
+          </div>
+        </div>
+        <div class="email-from">${escapeHtml(email.from)}</div>
+        <div class="email-subject">${escapeHtml(email.subject)}</div>
+        <div class="email-preview">${escapeHtml(email.preview)}</div>
+        <div class="email-actions">
+          ${otp ? `<button class="btn btn-primary btn-sm copy-otp" data-otp="${otp}">📋 Copy OTP</button>` : ''}
+          <button class="btn btn-secondary btn-sm copy-subject">📋 Copy Subject</button>
+          <button class="btn btn-secondary btn-sm copy-preview">📋 Copy Preview</button>
+        </div>
+      `;
+
+      // Copy handlers
+      const otpBtn = card.querySelector('.copy-otp');
+      if (otpBtn) {
+        otpBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(otpBtn.dataset.otp).then(() => {
+            toast('OTP copied!', 'success');
+          });
+        });
+      }
+
+      card.querySelector('.copy-subject').addEventListener('click', () => {
+        navigator.clipboard.writeText(email.subject).then(() => {
+          toast('Subject copied!', 'success');
+        });
+      });
+
+      card.querySelector('.copy-preview').addEventListener('click', () => {
+        navigator.clipboard.writeText(email.preview).then(() => {
+          toast('Preview copied!', 'success');
+        });
+      });
+
+      return card;
+    }
+
+    function renderErrors() {
+      if (accountErrors.length === 0) {
+        errorsToggle.style.display = 'none';
+        errorsList.style.display = 'none';
+        return;
+      }
+      errorsToggle.style.display = 'inline-block';
+      errorCountEl.textContent = accountErrors.length;
+      errorsList.innerHTML = accountErrors.map(e =>
+        `<div>${escapeHtml(e.account)}: ${escapeHtml(e.message.substring(0, 120))}</div>`
+      ).join('');
+    }
+
+    function toggleErrors() {
+      const el = $('errorsList');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+    function detectOTP(text) {
+      const match = text.match(/\b(\d{4,8})\b/);
+      return match ? match[1] : null;
+    }
+
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const sec = Math.floor(diff / 1000);
+      if (sec < 60) return `${sec}s ago`;
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `${min}m ago`;
+      const hrs = Math.floor(min / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days}d ago`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // -----------------------------------------------------------------------
+    // Event listeners
+    // -----------------------------------------------------------------------
+    startBtn.addEventListener('click', startMonitoring);
+    clearBtn.addEventListener('click', clearAll);
+
+    // Filter debounce
+    let filterTimer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(renderFeed, 200);
+    });
+
+    accountFilter.addEventListener('change', renderFeed);
+
+    showToggle.addEventListener('click', () => {
+      showToggle.classList.toggle('active');
+      showToggle.textContent = showToggle.classList.contains('active') ? 'New Only' : 'Show All';
+      renderFeed();
+    });
+
+    // -----------------------------------------------------------------------
+    // Init
+    // -----------------------------------------------------------------------
+    (async function init() {
+      const sid = await createSession();
+      if (sid) {
+        connectSSE();
+      } else {
+        toast('Could not create session', 'error');
+      }
+    })();
+  </script>
+</body>
+</html>
