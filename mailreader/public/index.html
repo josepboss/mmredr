@@ -181,6 +181,7 @@
       <div class="panel-actions">
         <button class="btn btn-primary" id="startBtn">▶ Start</button>
         <button class="btn btn-secondary btn-sm" id="uploadXlsxBtn">📄 Upload XLSX</button>
+        <button class="btn btn-secondary btn-sm" id="exportBtn">⬇ Export</button>
         <button class="btn btn-danger btn-sm" id="clearBtn">Clear</button>
       </div>
       <input type="file" id="xlsxFileInput" accept=".xlsx,.xls" style="display:none" />
@@ -239,7 +240,7 @@
   <div class="modal-overlay" id="xlsxModal">
     <div class="modal">
       <h3>📄 XLSX Column Mapping</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Detected columns &amp; preview of first rows. Confirm to load all accounts.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Detected columns & preview of first rows. Confirm to load all accounts.</p>
       <div id="xlsxColMap"></div>
       <table id="xlsxPreviewTable">
         <thead id="xlsxPreviewHead"></thead>
@@ -247,7 +248,7 @@
       </table>
       <div class="modal-actions">
         <button class="btn btn-secondary" id="xlsxCancelBtn">Cancel</button>
-        <button class="btn btn-primary" id="xlsxConfirmBtn">Confirm &amp; Start</button>
+        <button class="btn btn-primary" id="xlsxConfirmBtn">Confirm & Start</button>
       </div>
     </div>
   </div>
@@ -287,6 +288,7 @@
     const startBtn = $('startBtn');
     const clearBtn = $('clearBtn');
     const uploadBtn = $('uploadXlsxBtn');
+    const exportBtn = $('exportBtn');
     const xlsxInput = $('xlsxFileInput');
     const accountsInput = $('accountsInput');
     const searchInput = $('searchInput');
@@ -434,6 +436,31 @@
         finishSetup(data);
         if (data.invalid && data.invalid.length) showInvalidLines(data.invalid);
       } catch (e) { toast('Failed: ' + e.message, 'error'); }
+    }
+
+    // =======================================================================
+    // Export accounts
+    // =======================================================================
+    async function exportAccounts() {
+      if (!sessionId) { toast('No active session', 'error'); return; }
+      try {
+        const res = await fetch('/session/' + sessionId + '/export');
+        if (!res.ok) {
+          const err = await res.json();
+          toast('Export failed: ' + (err.error || 'unknown'), 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'accounts_export.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        toast('Accounts exported', 'success');
+      } catch (e) { toast('Export failed: ' + e.message, 'error'); }
     }
 
     // =======================================================================
@@ -785,6 +812,7 @@
     // =======================================================================
     startBtn.addEventListener('click', startMonitoring);
     clearBtn.addEventListener('click', clearAll);
+    exportBtn.addEventListener('click', exportAccounts);
 
     let filterTimer;
     searchInput.addEventListener('input', () => {

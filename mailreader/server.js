@@ -23,7 +23,7 @@ const sessions = new Map(); // sessionId -> SessionData
 class SessionData {
   constructor() {
     this.sessionId = uuidv4();
-    this.accounts = [];               // [{ email, refreshToken, clientId, accessToken, expiresAt, expired, lastError }]
+    this.accounts = [];               // [{ email, password, refreshToken, clientId, accessToken, expiresAt, expired, lastError }]
     this.sseResponse = null;          // active SSE response object
     this.pollTimer = null;            // setInterval handle
     this.lastPollTime = null;         // timestamp
@@ -224,6 +224,7 @@ function parseAccountsText(raw) {
     if (result.valid) {
       lineMap.push({
         email: result.email,
+        password: result.password || '',
         refreshToken: result.refreshToken,
         clientId: result.clientId,
         accessToken: null,
@@ -341,6 +342,7 @@ function parseXLSXRows(rows, colMap) {
     if (result.valid) {
       accounts.push({
         email: result.email,
+        password: result.password || '',
         refreshToken: result.refreshToken,
         clientId: result.clientId,
         accessToken: null,
@@ -617,6 +619,23 @@ app.get('/session/:sessionId/status', (req, res) => {
     lastPollTime: session.lastPollTime,
     expired,
   });
+});
+
+// Export accounts as downloadable text file
+app.get('/session/:sessionId/export', (req, res) => {
+  const session = sessions.get(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  session.markActive();
+
+  const lines = session.accounts.map(a => {
+    const pass = a.password || '';
+    return `${a.email}|${pass}|${a.refreshToken}|${a.clientId}`;
+  });
+
+  const content = lines.join('\n');
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Content-Disposition', 'attachment; filename="accounts_export.txt"');
+  res.send(content);
 });
 
 // SSE stream
