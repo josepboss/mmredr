@@ -245,12 +245,29 @@ function detectColumnByHeaders(headers, values) {
   const col = { emailIdx: -1, refreshIdx: -1, clientIdx: -1, passwordIdx: -1 };
   const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
 
+  // First pass: assign known columns by header keywords
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('email') || h === 'e' || h === 'mail') col.emailIdx = i;
-    else if (h.includes('refresh') || h.includes('token')) col.refreshIdx = i;
-    else if (h.includes('client') || h === 'cid' || h === 'app') col.clientIdx = i;
-    else if (h.includes('password') || h.includes('pass') || h === 'pw') col.passwordIdx = i;
+    let assigned = false;
+    // Email: match "email", "e-mail", "mail", "account", "login", "user"
+    if (/email|e-mail|mail|account|login|user/.test(h) && !assigned) { col.emailIdx = i; assigned = true; }
+    // Refresh token: match "refresh" or "token" (but not "password" which also has "token" sense)
+    if (!assigned && /refresh/.test(h)) { col.refreshIdx = i; assigned = true; }
+    // Client ID: match "client" or "cid" or "app"
+    if (!assigned && /client|cid|app\b/.test(h)) { col.clientIdx = i; assigned = true; }
+    // Password: match "password" or "pass" or "pw" or "secret"
+    if (!assigned && /password|pass|pw|secret/.test(h)) { col.passwordIdx = i; assigned = true; }
+  }
+
+  // Second pass: leftover column → password (any column not yet assigned)
+  if (col.passwordIdx === -1) {
+    const assigned = new Set([col.emailIdx, col.refreshIdx, col.clientIdx]);
+    for (let i = 0; i < lowerHeaders.length; i++) {
+      if (!assigned.has(i)) {
+        col.passwordIdx = i;
+        break;
+      }
+    }
   }
 
   return col;
@@ -261,9 +278,11 @@ function detectColumnByValues(values) {
   if (values.length === 0) return col;
 
   const numCols = values[0].length;
+  const scored = new Set();
 
+  // Score each column for email / refresh / client patterns
   for (let c = 0; c < numCols; c++) {
-    let emailScore = 0, refreshScore = 0, clientScore = 0, passScore = 0;
+    let emailScore = 0, refreshScore = 0, clientScore = 0;
 
     for (let r = 0; r < Math.min(values.length, 5); r++) {
       const v = String(values[r][c] || '').trim();
@@ -273,13 +292,30 @@ function detectColumnByValues(values) {
       if (UUID_RE.test(v)) clientScore += 3;
     }
 
-    const maxScore = Math.max(emailScore, refreshScore, clientScore, passScore);
+    const maxScore = Math.max(emailScore, refreshScore, clientScore);
     if (maxScore === 0) continue;
+    scored.add(c);
 
     if (emailScore === maxScore && col.emailIdx === -1) col.emailIdx = c;
     else if (refreshScore === maxScore && col.refreshIdx === -1) col.refreshIdx = c;
     else if (clientScore === maxScore && col.clientIdx === -1) col.clientIdx = c;
-    else if (passScore === maxScore && col.passwordIdx === -1) col.passwordIdx = c;
+  }
+
+  // Whatever column has data but wasn't multi-scored → password (leftover)
+  if (col.passwordIdx === -1) {
+    const assigned = new Set([col.emailIdx, col.refreshIdx, col.clientIdx]);
+    for (let c = 0; c < numCols; c++) {
+      if (assigned.has(c)) continue;
+      // Check if column has any data in the first few rows
+      for (let r = 0; r < Math.min(values.length, 3); r++) {
+        const v = String(values[r][c] || '').trim();
+        if (v) {
+          col.passwordIdx = c;
+          break;
+        }
+      }
+      if (col.passwordIdx !== -1) break;
+    }
   }
 
   return col;
