@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>2FA Code Generator · MailReader</title>
+  <link rel="stylesheet" href="/two-factor.css">
+  <script src="/totp.js" defer></script>
+  <script src="/two-factor.js" defer></script>
+</head>
+<body>
+  <nav aria-label="Tools"><a href="/">← MailReader</a><span>TOOLS / 2FA</span></nav>
+  <main>
+    <h1>2FA Code Generator</h1>
+    <p class="intro">Get your verification code from a secret key.</p>
+    <label for="secret">Your secret key</label>
+    <div class="secret-wrap">
+      <input id="secret" type="text" placeholder="Enter your Base32 secret key" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="privacy error" maxlength="1024">
+      <button id="clear" class="clear" type="button" aria-label="Clear secret key" title="Clear secret key">×</button>
+    </div>
+    <p id="privacy" class="privacy">Private by design. Your key stays in this tab and is never saved or sent to a server.</p>
+    <p id="error" class="error" role="alert"></p>
+    <section class="result" aria-label="Verification code">
+      <button id="copy" class="code" type="button" disabled aria-label="Copy verification code"><span id="code">••• •••</span></button>
+      <p id="copy-status" class="copy-status" role="status">Enter a secret key to begin</p>
+      <div id="timer" class="timer" hidden>
+        <progress id="progress" max="30" value="30" aria-label="Seconds remaining"></progress>
+        <p class="countdown">Next code <span id="next-code"></span> in <span id="seconds">30</span> sec</p>
+      </div>
+    </section>
+    <details>
+      <summary>About this tool</summary>
+      <p>Generates standard six-digit, SHA-1 time-based verification codes (TOTP), refreshed every 30 seconds. Use the Base32 setup key supplied by your account provider. Keep your device’s date and time set automatically so codes match.</p>
+      <p>Treat your secret key like a password. Only enter keys for accounts you own or are authorized to access. This tool does not store your keys or provide account recovery.</p>
+    </details>
+  </main>
+  <footer>MailReader tools · Generated on your device</footer>
+</body>
+</html>

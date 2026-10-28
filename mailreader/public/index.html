@@ -64,6 +64,8 @@
     .navbar-left { display: flex; align-items: center; gap: 12px; }
     .navbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
     .navbar h1 span { color: var(--accent); }
+    .tool-link { color: var(--text-muted); font-size: 13px; text-decoration: none; white-space: nowrap; }
+    .tool-link:hover, .tool-link:focus-visible { color: var(--text); text-decoration: underline; }
     .navbar-stats { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
     .navbar-stats span { white-space: nowrap; }
     .navbar-stats strong { color: var(--text); }
@@ -207,6 +209,7 @@
   <nav class="navbar">
     <div class="navbar-left">
       <h1><span>Mail</span>Reader</h1>
+      <a class="tool-link" href="/2FA">2FA Generator</a>
       <span class="status-dot disconnected" id="statusDot"></span>
       <span class="status-label" id="statusLabel">Disconnected</span>
     </div>

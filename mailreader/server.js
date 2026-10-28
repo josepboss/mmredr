@@ -13,6 +13,13 @@ const PORT = 9320;
 // ---------------------------------------------------------------------------
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '20mb' }));
+// Tools are static browser apps; secrets never pass through the server.
+app.get('/2FA', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+  res.sendFile(path.join(__dirname, 'public', 'two-factor.html'));
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------------------------------------------------------------------

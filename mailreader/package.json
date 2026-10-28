@@ -4,7 +4,8 @@
   "description": "Multi-account email monitoring tool via Microsoft Graph API",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
